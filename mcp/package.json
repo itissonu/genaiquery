@@ -1,0 +1,28 @@
+{
+  "name": "mcp",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "chromadb": "^3.0.10",
+    "compression": "^1.8.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "helmet": "^8.1.0",
+    "mongoose": "^8.17.0",
+    "multer": "^2.0.2",
+    "openai": "^5.10.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

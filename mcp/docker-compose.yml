@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # MCP Node.js Server
+  mcp-server:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=development
+
+      # Ollama config
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:1b-instruct-q4_K_M
+      - OLLAMA_EMBED_MODEL=nomic-embed-text
+      - EMBEDDING_DIMENSIONS=768
+
+      # Vector DB config
+      - CHROMA_URL=http://chromadb:8000
+
+      # Text chunking
+      - CHUNK_SIZE=500
+      - CHUNK_OVERLAP=50
+      - MAX_CONTEXT_CHUNKS=5
+      - MAX_CONVERSATION_HISTORY=5
+
+      # MongoDB (you can run it locally or as another service)
+      - MONGODB_URI=mongodb://host.docker.internal:27017/schema_chat_db
+
+    depends_on:
+      - ollama
+      - chromadb
+    volumes:
+      - ./uploads:/app/uploads
+      - ./.env:/app/.env
+    restart: unless-stopped
+    networks:
+      - mcp-network
+
+  # ChromaDB Vector Store
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb_data:/chroma/chroma
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+    restart: unless-stopped
+    networks:
+      - mcp-network
+
+  # Ollama LLM and Embedding Service
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - mcp-network
+    # OPTIONAL: Preload models manually after container starts
+    # or use entrypoint/init script
+
+volumes:
+  chromadb_data:
+  ollama_data:
+
+networks:
+  mcp-network:
+    driver: bridge
