@@ -1,0 +1,33 @@
+name: ESLint Review
+
+on:
+  push:
+    branches:
+      - main
+      - '**'
+  pull_request:
+
+jobs:
+  eslint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - run: npm install
+
+      - name: Install ReviewDog
+        run: |
+          curl -sfL https://raw.githubusercontent.com/reviewdog/reviewdog/master/install.sh | sh -s -- -b ./bin
+          echo "$(pwd)/bin" >> $GITHUB_PATH
+
+      - name: Run ESLint with ReviewDog
+        run: |
+          npx eslint . --format json -o result.json || true
+          reviewdog -f=eslint -name="eslint" -reporter=github-pr-review < result.json
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
