@@ -361,7 +361,7 @@ app.get('/health', async (req, res) => {
         const vectorStatus = vectorStore ? 'connected' : 'disconnected';
         
         res.json({
-            status: 'healthy',
+            status: 'healthyyyy',
             timestamp: new Date().toISOString(),
             services: {
                 mongodb: mongoStatus,
