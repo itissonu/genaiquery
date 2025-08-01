@@ -7,7 +7,7 @@ const fs = require('fs').promises;
 const mongoose = require('mongoose');
 const chatTool = require('./tools/chatTool.js');
 const { initializeVectorStore, storeSchemaEmbeddings, searchSimilarChunks } = require('./utils/vectorStore.js');
-const { generateEmbeddings} = require('./utils/embed.js');
+const { generateEmbeddings } = require('./utils/embed.js');
 const { extractText } = require('./utils/extractText.js');
 const { SchemaUpload, Conversation, ProjectStats } = require('./models/index.js');
 
@@ -48,9 +48,9 @@ const storage = multer.diskStorage({
     }
 });
 
-const upload = multer({ 
+const upload = multer({
     storage,
-    limits: { fileSize: 10 * 1024 * 1024 }, 
+    limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (req, file, cb) => {
         const allowedTypes = ['.sql', '.json', '.prisma', '.csv', '.php', '.go', '.java', '.js', '.ts', '.py', '.rb', '.xml', '.yaml', '.yml'];
         const ext = path.extname(file.originalname).toLowerCase();
@@ -93,7 +93,7 @@ app.post('/task', async (req, res) => {
             case 'chat':
                 await handleChatTask(req, res, input, projectId, userId);
                 break;
-            
+
             default:
                 res.status(400).json({
                     error: `Unsupported task type: ${task}`,
@@ -124,7 +124,7 @@ async function handleChatTask(req, res, input, projectId, userId) {
     const streamFn = (data) => {
         const chunk = typeof data === 'string' ? data : JSON.stringify(data);
         res.write(`data: ${chunk}\n\n`);
-        
+
         // Collect response content for storage
         if (typeof data === 'object' && data.content) {
             fullResponse += data.content;
@@ -134,10 +134,10 @@ async function handleChatTask(req, res, input, projectId, userId) {
     try {
         // Get conversation history before processing
         const conversationHistory = await getConversationHistory(projectId, userId);
-        
+
         // Use the chat tool to handle the request
         const contextUsed = await chatTool(input, projectId, userId, streamFn, conversationHistory);
-        
+
         // Store conversation in MongoDB
         await saveConversation({
             projectId,
@@ -147,12 +147,19 @@ async function handleChatTask(req, res, input, projectId, userId) {
             contextUsed,
             responseTime: Date.now() - startTime
         });
-        
+
         // Update project stats
         await updateProjectStats(projectId, userId);
-        
+
         res.write('data: [DONE]\n\n');
         res.end();
+
+        //   res.status(200).json({
+        //     success: true,
+        //     response: fullResponse,
+        //     projectId,
+        //     userId
+        // });
     } catch (error) {
         console.error('❌ Chat tool error:', error);
         streamFn({ error: 'Failed to process chat request', message: error.message });
@@ -164,9 +171,64 @@ async function handleChatTask(req, res, input, projectId, userId) {
 /**
  * Updated schema upload endpoint with MongoDB storage
  */
+
+app.get('/project/:projectId/vectors', async (req, res) => {
+    const { projectId } = req.params;
+    //   const vectorStore = require('./utils/vectorStore').getVectorStore();
+
+    if (!vectorStore) {
+        return res.status(500).json({ error: 'Vector store not initialized' });
+    }
+
+    try {
+        if (vectorStore.isInMemory) {
+            const projectDocs = vectorStore.documents.get(projectId) || [];
+            return res.json({
+                projectId,
+                storage: 'in-memory',
+                vectorCount: projectDocs.length,
+                vectors: projectDocs.map(doc => ({
+                    id: doc.id,
+                    text: doc.text,
+                    metadata: doc.metadata
+                }))
+            });
+        }
+
+        const results = await vectorStore.collection.get({
+            include: ['embeddings', 'documents', 'metadatas', 'uris'], // ✅ only these allowed
+            where: { projectId }
+        });
+
+        const vectorCount = results?.ids?.length || 0;
+
+        res.json({
+            projectId,
+            storage: 'chromadb',
+            vectorCount,
+            embedings:results. embeddings,
+          
+            vectors: results.ids.map((id, i) => ({
+                id,
+                document: results.documents?.[i],
+                metadata: results.metadatas?.[i],
+                // Don't include embeddings unless explicitly needed:
+                 //embedding: results.embedding
+            }))
+        });
+
+    } catch (error) {
+        console.error('❌ Error fetching vectors:', error);
+        res.status(500).json({
+            error: 'Failed to fetch vectors',
+            message: error.message
+        });
+    }
+});
+
 app.post('/upload-schema', upload.single('file'), async (req, res) => {
     let filePath = null;
-    
+
     try {
         const { projectId, userId } = req.body;
         if (!projectId) {
@@ -192,7 +254,7 @@ app.post('/upload-schema', upload.single('file'), async (req, res) => {
 
         // Extract text content
         const extractedText = await extractText(filePath, originalName);
-        
+
         if (!extractedText || extractedText.trim().length === 0) {
             return res.status(400).json({
                 success: false,
@@ -202,7 +264,7 @@ app.post('/upload-schema', upload.single('file'), async (req, res) => {
 
         // Split text into chunks
         const chunks = splitIntoChunks(extractedText, 500, 50);
-        
+
         if (chunks.length === 0) {
             return res.status(400).json({
                 success: false,
@@ -230,7 +292,7 @@ app.post('/upload-schema', upload.single('file'), async (req, res) => {
             extractedText,
             chunksStored: storedCount
         });
-        
+
         await schemaUpload.save();
         console.log('✅ Schema upload saved to MongoDB');
 
@@ -255,7 +317,7 @@ app.post('/upload-schema', upload.single('file'), async (req, res) => {
 
     } catch (error) {
         console.error('Error processing schema upload:', error);
-        
+
         if (filePath) {
             try {
                 await fs.unlink(filePath);
@@ -356,10 +418,10 @@ app.get('/health', async (req, res) => {
     try {
         // Test MongoDB connection
         const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-        
+
         // Test vector store
         const vectorStatus = vectorStore ? 'connected' : 'disconnected';
-        
+
         res.json({
             status: 'healthyyyy',
             timestamp: new Date().toISOString(),
@@ -384,14 +446,14 @@ app.get('/health', async (req, res) => {
  */
 async function getConversationHistory(projectId, userId, limit = 5) {
     try {
-        const conversations = await Conversation.find({ 
-            projectId, 
-            ...(userId && { userId }) 
+        const conversations = await Conversation.find({
+            projectId,
+            ...(userId && { userId })
         })
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .select('userMessage assistantResponse createdAt');
-        
+            .sort({ createdAt: -1 })
+            .limit(limit)
+            .select('userMessage assistantResponse createdAt');
+
         return conversations.reverse(); // Return in chronological order
     } catch (error) {
         console.error('Error fetching conversation history:', error);
@@ -424,18 +486,18 @@ async function updateProjectStats(projectId, userId) {
             {
                 $inc: { totalConversations: 1 },
                 lastActivity: new Date(),
-                $addToSet: { 
+                $addToSet: {
                     users: { userId, lastActive: new Date() }
                 }
             },
             { upsert: true, new: true }
         );
-        
+
         // Update schema count
         const schemaCount = await SchemaUpload.countDocuments({ projectId, isActive: true });
         stats.totalSchemas = schemaCount;
         await stats.save();
-        
+
     } catch (error) {
         console.error('Error updating project stats:', error);
     }
@@ -444,26 +506,26 @@ async function updateProjectStats(projectId, userId) {
 function splitIntoChunks(text, chunkSize = 500, overlap = 50) {
     const chunks = [];
     let start = 0;
-    
+
     while (start < text.length) {
         let end = start + chunkSize;
-        
+
         if (end < text.length) {
             const lastSpace = text.lastIndexOf(' ', end);
-            if (lastSpace > start + chunkSize * 0.7) { 
+            if (lastSpace > start + chunkSize * 0.7) {
                 end = lastSpace;
             }
         }
-        
+
         const chunk = text.slice(start, end).trim();
         if (chunk.length > 0) {
             chunks.push(chunk);
         }
-        
+
         start = end - overlap;
         if (start >= text.length) break;
     }
-    
+
     return chunks;
 }
 

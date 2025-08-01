@@ -32,12 +32,14 @@ async function generateEmbeddings(input) {
     switch (EMBEDDING_CONFIG.provider) {
       case 'ollama':
         const embeddings = await generateOllamaEmbeddings(chunks);
+        // console.log({"ollamaEmbeddings":embeddings});
         return isArray ? embeddings : embeddings[0];
       case 'openai':
         const openaiEmbeddings = await generateOpenAIEmbeddings(chunks);
         return isArray ? openaiEmbeddings : openaiEmbeddings[0];
       default:
         const mockEmbeddings = generateMockEmbeddings(chunks);
+        console.log({"mockEmbeddings":mockEmbeddings});
         return isArray ? mockEmbeddings : mockEmbeddings[0];
     }
   } catch (error) {
@@ -68,7 +70,7 @@ async function generateOllamaEmbeddings(chunks) {
         model: model,
         prompt: chunk
       }, {
-        timeout: 30000,
+        timeout: 300000,
         headers: {
           'Content-Type': 'application/json'
         }

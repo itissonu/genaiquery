@@ -30,6 +30,8 @@ async function chatTool(input, projectId, userId, streamFn, conversationHistory 
         // Step 2: Construct context-aware prompt with history
         const prompt = buildContextAwarePrompt(input, context, projectId, conversationHistory);
 
+
+        console.log({"the prompt we build is":prompt})
         // Step 3: Send to LLM and stream response
         await generateStreamingResponse(prompt, streamFn);
 
@@ -47,33 +49,33 @@ async function chatTool(input, projectId, userId, streamFn, conversationHistory 
 function splitIntoChunks(text, chunkSize = 500, overlap = 50) {
     const chunks = [];
     let start = 0;
-    
+
     while (start < text.length) {
         let end = start + chunkSize;
-        
+
         if (end < text.length) {
             const lastSpace = text.lastIndexOf(' ', end);
-            if (lastSpace > start + chunkSize * 0.7) { 
+            if (lastSpace > start + chunkSize * 0.7) {
                 end = lastSpace;
             }
         }
-        
+
         const chunk = text.slice(start, end).trim();
         if (chunk.length > 0) {
             chunks.push(chunk);
         }
-        
+
         start = end - overlap;
         if (start >= text.length) break;
     }
-    
+
     return chunks;
 }
 
 async function retrieveSchemaContext(query, projectId) {
     try {
         console.log(`🔍 Searching for relevant schema context...`);
-        
+
         // Generate embedding for the user's question
         const queryEmbedding = await generateEmbeddings(query);
 
@@ -103,7 +105,11 @@ async function retrieveSchemaContext(query, projectId) {
  */
 function buildContextAwarePrompt(userInput, context, projectId, conversationHistory) {
     let prompt = '';
+    const isPrismaSchema = context.chunks.some(
+        chunk => chunk.metadata?.fileType === '.prisma'
+    );
 
+    console.log({"isPrisma":isPrismaSchema})
     // System prompt
     prompt += `You are an AI assistant helping with database and schema-related questions for project "${projectId}". `;
     prompt += `You have access to database schema information and conversation history to provide accurate, context-aware responses.\n\n`;
@@ -139,10 +145,15 @@ function buildContextAwarePrompt(userInput, context, projectId, conversationHist
     prompt += `- Reference the conversation history when relevant to maintain context\n`;
     prompt += `- If the question relates to database structure, tables, or fields, reference the schema\n`;
     prompt += `- If you need to suggest SQL queries, base them on the actual schema structure\n`;
+
+
+    if (isPrismaSchema) {
+        prompt += `- Since the schema is in Prisma format, also include equivalent Prisma ORM code using Prisma Client JS\n`;
+    }
+
     prompt += `- If the question cannot be answered with the provided schema, say so clearly\n`;
     prompt += `- Be concise but thorough in your explanation\n`;
     prompt += `- Maintain conversational flow by acknowledging previous interactions when relevant\n\n`;
-    
     prompt += `**Response:**`;
 
     return prompt;
