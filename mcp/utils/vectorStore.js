@@ -44,14 +44,14 @@ async function initializeVectorStore() {
         let collection;
         try {
             collection = await client.getCollection({
-                name: COLLECTION_NAME,
-                embeddingFunction
+                name: COLLECTION_NAME
+                // embeddingFunction
             });
             console.log(`📚 Using existing collection: ${COLLECTION_NAME}`);
         } catch (error) {
             collection = await client.createCollection({
                 name: COLLECTION_NAME,
-                embeddingFunction,
+               // embeddingFunction,
                 metadata: {
                     description: 'Database schema embeddings for RAG',
                     created_at: new Date().toISOString()
@@ -77,9 +77,9 @@ function initializeInMemoryStore() {
         documents: new Map(), // projectId -> documents[]
         isInMemory: true
     };
-    
+
     global.vectorStore = inMemoryStore;
-    
+
     console.log('✅ In-memory vector store initialized');
     return inMemoryStore;
 }
@@ -93,16 +93,16 @@ function initializeInMemoryStore() {
  */
 async function storeSchemaEmbeddings(vectorStore, projectId, chunks, metadata = {}) {
     console.log(`💾 Storing ${chunks.length} schema embeddings for project: ${projectId}`);
-    
+
     try {
         if (vectorStore.isInMemory) {
             await storeInMemoryEmbeddings(vectorStore, projectId, chunks, metadata);
         } else {
             await storeChromaEmbeddings(vectorStore, projectId, chunks, metadata);
         }
-        
+
         console.log(`✅ Successfully stored embeddings for project: ${projectId}`);
-        
+
     } catch (error) {
         console.error(`❌ Failed to store embeddings for project ${projectId}:`, error);
         throw error;
@@ -114,17 +114,17 @@ async function storeSchemaEmbeddings(vectorStore, projectId, chunks, metadata = 
  */
 async function storeChromaEmbeddings(vectorStore, projectId, chunks, metadata) {
     const { collection } = vectorStore;
-    
+
     // Generate embeddings for all chunks
     const embeddings = [];
     const documents = [];
     const metadatas = [];
     const ids = [];
-    
+
     for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const embedding = await generateEmbeddings(chunk);
-        
+        // console.log({ "embeddingat vectorstore": embedding })
         embeddings.push(embedding);
         documents.push(chunk);
         metadatas.push({
@@ -135,14 +135,29 @@ async function storeChromaEmbeddings(vectorStore, projectId, chunks, metadata) {
         });
         ids.push(`${projectId}_${i}_${Date.now()}`);
     }
-    
+    //console.log(embeddings)
     // Add to ChromaDB collection
+
+
+
     await collection.add({
-        ids: ids,
-        embeddings: embeddings,
-        documents: documents,
-        metadatas: metadatas
+        ids,
+        embeddings,
+        documents,
+        metadatas
     });
+    const count = await collection.count();
+   // console.log("🧮 Total vectors stored in collection:", count);
+
+// const result = await collection.get({
+//   include: ['embeddings', 'documents', 'metadatas', 'uris'], // ✅ only these allowed
+//   where: { projectId }
+// });
+
+
+
+   // console.log("📦 Confirmed in collection:", result.embeddings);
+
 }
 
 /**
@@ -152,19 +167,21 @@ async function storeInMemoryEmbeddings(vectorStore, projectId, chunks, metadata)
     if (!vectorStore.documents.has(projectId)) {
         vectorStore.documents.set(projectId, []);
     }
-    
+
     const projectDocs = vectorStore.documents.get(projectId);
-    
+
     // Clear existing documents for this project
     projectDocs.length = 0;
-    
+
     // Generate and store embeddings
     for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
         const embedding = await generateEmbeddings(chunk);
-        
+        console.log({ "embeddingat vectorstore": embedding })
+        const timestamp = Date.now();
+
         projectDocs.push({
-            id: `${projectId}_${i}_${Date.now()}`,
+            id: `${projectId}_${i}_${timestamp}`,
             text: chunk,
             embedding: embedding,
             metadata: {
@@ -187,19 +204,19 @@ async function storeInMemoryEmbeddings(vectorStore, projectId, chunks, metadata)
  */
 async function searchSimilarChunks(vectorStore, projectId, queryEmbedding, topK = 5) {
     console.log(`🔍 Searching for top ${topK} similar chunks in project: ${projectId}`);
-    
+
     try {
         let results;
-        
+
         if (vectorStore.isInMemory) {
             results = await searchInMemoryChunks(vectorStore, projectId, queryEmbedding, topK);
         } else {
             results = await searchChromaChunks(vectorStore, projectId, queryEmbedding, topK);
         }
-        
+
         console.log(`📊 Found ${results.length} similar chunks`);
         return results;
-        
+
     } catch (error) {
         console.error(`❌ Search failed for project ${projectId}:`, error);
         return [];
@@ -211,16 +228,16 @@ async function searchSimilarChunks(vectorStore, projectId, queryEmbedding, topK 
  */
 async function searchChromaChunks(vectorStore, projectId, queryEmbedding, topK) {
     const { collection } = vectorStore;
-    
+
     const results = await collection.query({
         queryEmbeddings: [queryEmbedding],
         nResults: topK,
         where: { projectId: projectId }
     });
-    
+
     // Format results
     const formattedResults = [];
-    
+
     if (results.documents && results.documents[0]) {
         for (let i = 0; i < results.documents[0].length; i++) {
             formattedResults.push({
@@ -231,7 +248,7 @@ async function searchChromaChunks(vectorStore, projectId, queryEmbedding, topK) 
             });
         }
     }
-    
+
     return formattedResults;
 }
 
@@ -240,17 +257,17 @@ async function searchChromaChunks(vectorStore, projectId, queryEmbedding, topK) 
  */
 async function searchInMemoryChunks(vectorStore, projectId, queryEmbedding, topK) {
     const projectDocs = vectorStore.documents.get(projectId) || [];
-    
+
     if (projectDocs.length === 0) {
         return [];
     }
-    
+
     // Calculate cosine similarity for each document
     const similarities = projectDocs.map(doc => ({
         ...doc,
         similarity: cosineSimilarity(queryEmbedding, doc.embedding)
     }));
-    
+
     // Sort by similarity and return top k
     return similarities
         .sort((a, b) => b.similarity - a.similarity)
@@ -270,24 +287,24 @@ function cosineSimilarity(vecA, vecB) {
     if (vecA.length !== vecB.length) {
         throw new Error('Vectors must have the same length');
     }
-    
+
     let dotProduct = 0;
     let normA = 0;
     let normB = 0;
-    
+
     for (let i = 0; i < vecA.length; i++) {
         dotProduct += vecA[i] * vecB[i];
         normA += vecA[i] * vecA[i];
         normB += vecB[i] * vecB[i];
     }
-    
+
     normA = Math.sqrt(normA);
     normB = Math.sqrt(normB);
-    
+
     if (normA === 0 || normB === 0) {
         return 0;
     }
-    
+
     return dotProduct / (normA * normB);
 }
 
@@ -301,7 +318,7 @@ async function getProjectStats(vectorStore, projectId) {
             return {
                 projectId,
                 documentCount: projectDocs.length,
-                lastUpdated: projectDocs.length > 0 ? 
+                lastUpdated: projectDocs.length > 0 ?
                     Math.max(...projectDocs.map(doc => new Date(doc.metadata.timestamp).getTime())) : null
             };
         } else {
@@ -309,11 +326,11 @@ async function getProjectStats(vectorStore, projectId) {
             const results = await vectorStore.collection.get({
                 where: { projectId: projectId }
             });
-            
+
             return {
                 projectId,
                 documentCount: results.ids?.length || 0,
-                lastUpdated: results.metadatas?.length > 0 ? 
+                lastUpdated: results.metadatas?.length > 0 ?
                     Math.max(...results.metadatas.map(meta => new Date(meta.timestamp).getTime())) : null
             };
         }
@@ -333,7 +350,7 @@ async function getProjectStats(vectorStore, projectId) {
  */
 async function deleteProjectEmbeddings(vectorStore, projectId) {
     console.log(`🗑️ Deleting embeddings for project: ${projectId}`);
-    
+
     try {
         if (vectorStore.isInMemory) {
             vectorStore.documents.delete(projectId);
@@ -343,9 +360,9 @@ async function deleteProjectEmbeddings(vectorStore, projectId) {
                 where: { projectId: projectId }
             });
         }
-        
+
         console.log(`✅ Successfully deleted embeddings for project: ${projectId}`);
-        
+
     } catch (error) {
         console.error(`❌ Failed to delete embeddings for project ${projectId}:`, error);
         throw error;
@@ -367,14 +384,14 @@ async function listProjects(vectorStore) {
             // For ChromaDB, we'd need to get all unique project IDs
             const results = await vectorStore.collection.get();
             const projectCounts = {};
-            
+
             if (results.metadatas) {
                 results.metadatas.forEach(metadata => {
                     const projectId = metadata.projectId;
                     projectCounts[projectId] = (projectCounts[projectId] || 0) + 1;
                 });
             }
-            
+
             return Object.entries(projectCounts).map(([projectId, count]) => ({
                 projectId,
                 documentCount: count
@@ -401,7 +418,7 @@ async function healthCheck() {
         if (!global.vectorStore) {
             return { status: 'unhealthy', message: 'Vector store not initialized' };
         }
-        
+
         if (global.vectorStore.isInMemory) {
             return {
                 status: 'healthy',
@@ -412,7 +429,7 @@ async function healthCheck() {
             // Test ChromaDB connection
             await global.vectorStore.client.heartbeat();
             const count = await global.vectorStore.collection.count();
-            
+
             return {
                 status: 'healthy',
                 type: 'chromadb',

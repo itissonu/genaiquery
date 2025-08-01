@@ -30,7 +30,7 @@ const schemaUploadSchema = new mongoose.Schema({
     },
     chunksStored: {
         type: Number,
-        required: true
+       
     },
     uploadedAt: {
         type: Date,
